@@ -33,10 +33,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <getopt.h>
 #include <string.h>
 #include <stdint.h>
-#include <errno.h>
 #include <limits.h>
 
 #include "assert.h"
@@ -109,10 +107,11 @@ int main(int argc, char **argv)
     uint64_t msr_val[NUM_MSR];
 
     for (i = 0; i < NUM_MSR; ++i) {
+        lval = i;
         msr_val[i] = lval | (hval << 32);
     }
 
-    /* Create mock msr files for 10 CPUs */
+    /* Create mock msr files for each CPU */
     char this_path[NAME_MAX] = {};
     for (i = 0; i < num_cpu; ++i) {
         snprintf(this_path, NAME_MAX, test_msr_path, i);

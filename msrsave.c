@@ -72,7 +72,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     whitelist_buffer = (char*)malloc(whitelist_stat.st_size);
     if (!whitelist_buffer) {
         err = errno ? errno : 1;
-        snprintf(err_msg, NAME_MAX, "Could not allocat array of size %lld!", whitelist_stat.st_size);
+        snprintf(err_msg, NAME_MAX, "Could not allocate array of size %zu!", whitelist_stat.st_size);
         perror(err_msg);
         goto exit;
     }
@@ -90,7 +90,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     size_t num_read = fread(whitelist_buffer, 1, whitelist_stat.st_size, whitelist_fid);
     if (num_read != whitelist_stat.st_size) {
         err = errno ? errno : 1;
-        snprintf(err_msg, NAME_MAX, "Contents read from whitelist file is too small: %llu < %llu!", num_read, whitelist_stat.st_size);
+        snprintf(err_msg, NAME_MAX, "Contents read from whitelist file is too small: %zu < %zu!", num_read, whitelist_stat.st_size);
         perror(err_msg);
         goto exit;
     }
@@ -108,7 +108,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     msr_offset = (uint64_t *)malloc(sizeof(uint64_t) * num_whitelist_entry);
     if (!msr_offset) {
         err = errno ? errno : 1;
-        snprintf(err_msg, NAME_MAX, "Unable to allocate msr mask data of size: %llu!", sizeof(uint64_t) * num_whitelist_entry);
+        snprintf(err_msg, NAME_MAX, "Unable to allocate msr mask data of size: %zu!", sizeof(uint64_t) * num_whitelist_entry);
         perror(err_msg);
         goto exit;
     }
@@ -116,7 +116,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     msr_mask = (uint64_t *)malloc(sizeof(uint64_t) * num_whitelist_entry);
     if (!msr_mask) {
         err = errno ? errno : 1;
-        snprintf(err_msg, NAME_MAX, "Unable to allocate msr mask data of size: %llu!", sizeof(uint64_t) * num_whitelist_entry);
+        snprintf(err_msg, NAME_MAX, "Unable to allocate msr mask data of size: %zu!", sizeof(uint64_t) * num_whitelist_entry);
         perror(err_msg);
         goto exit;
     }

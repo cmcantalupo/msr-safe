@@ -132,6 +132,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
             goto exit;
         }
         whitelist_ptr = strchr(whitelist_ptr, '\n');
+        whitelist_ptr++; /* Move the pointer to the next line  */
         if (!whitelist_ptr) {
             err = -1;
             fprintf(stderr, "Error: Failed to parse whitelist file named \"%s\"\n", whitelist_path);

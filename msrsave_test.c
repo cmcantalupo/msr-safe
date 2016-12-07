@@ -151,7 +151,8 @@ int main(int argc, char **argv)
     msrsave_test_mock_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
 
     /* Save the current state to a file */
-    msr_save(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
+    err = msr_save(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
+    assert(err == 0);
 
     /* Overwrite the mock msr files with new data */
     hval = 0x1EADBEEF;
@@ -163,7 +164,8 @@ int main(int argc, char **argv)
     msrsave_test_mock_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
 
     /* Restore to the original values */
-    msr_restore(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
+    err = msr_restore(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
+    assert(err == 0);
 
     /* Check that the values that are writable have been restored. */
     /* Check that the values that are not writable have been unaltered. */

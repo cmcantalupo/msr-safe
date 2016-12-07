@@ -36,10 +36,46 @@
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
+#include <assert.h>
 
-#include "assert.h"
+void msrsave_test_mock_msr(void *buffer, size_t buffer_size, const char *path_format, int num_cpu);
+void msrsave_test_check_msr(uint64_t *buffer, size_t num_check, const char *path_format, int num_cpu);
 
-/* Compile test, not program when included from msrsave.c */
+void msrsave_test_mock_msr(void *buffer, size_t buffer_size, const char *path_format, int num_cpu)
+{
+    /* Create mock msr files for each CPU */
+    int i;
+    char this_path[NAME_MAX] = {};
+    for (i = 0; i < num_cpu; ++i) {
+        snprintf(this_path, NAME_MAX, path_format, i);
+        FILE *fid = fopen(this_path, "w");
+        assert(fid != 0);
+        fwrite(buffer, 1, buffer_size, fid);
+        fclose(fid);
+    }
+}
+
+void msrsave_test_check_msr(uint64_t *check_val, size_t num_check, const char *path_format, int num_cpu)
+{
+    /* Create mock msr files for each CPU */
+    int i, j;
+    char this_path[NAME_MAX] = {};
+    uint64_t *read_val = malloc(num_check * sizeof(uint64_t));
+    assert(read_val != NULL);
+    for (i = 0; i < num_cpu; ++i) {
+        snprintf(this_path, NAME_MAX, path_format, i);
+        FILE *fid = fopen(this_path, "r");
+        assert(fid != 0);
+        fread(read_val, sizeof(uint64_t), num_check, fid);
+        fclose(fid);
+        for (j = 0; j < num_check; ++j) {
+            assert(check_val[j] == read_val[j]);
+        }
+    }
+    free(read_val);
+}
+
+
 int main(int argc, char **argv)
 {
     int err = 0;
@@ -87,6 +123,7 @@ int main(int argc, char **argv)
 
     enum {NUM_MSR = sizeof(whitelist_off) / sizeof(uint64_t)};
     assert(NUM_MSR == sizeof(whitelist_mask) / sizeof(uint64_t));
+    const char *test_save_path = "msrsave_test_store";
     const char *test_whitelist_path = "msrsave_test_whitelist";
     const char *test_msr_path = "msrsave_test_msr.%d";
     const char *whitelist_format = "MSR: %.8llx Write Mask: %.16llx\n";
@@ -101,40 +138,48 @@ int main(int argc, char **argv)
     }
     fclose(fid);
 
-    /* Create mock msr data*/
     uint64_t lval = 0x0;
     uint64_t hval = 0xDEADBEEF;
     uint64_t msr_val[NUM_MSR];
 
+    /* Create mock msr data*/
     for (i = 0; i < NUM_MSR; ++i) {
         lval = i;
         msr_val[i] = lval | (hval << 32);
     }
 
-    /* Create mock msr files for each CPU */
-    char this_path[NAME_MAX] = {};
-    for (i = 0; i < num_cpu; ++i) {
-        snprintf(this_path, NAME_MAX, test_msr_path, i);
-        FILE *fid = fopen(this_path, "w");
-        assert(fid != 0);
-        fwrite(msr_val, 1, sizeof(msr_val), fid);
-        fclose(fid);
-    }
+    msrsave_test_mock_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
 
     /* Save the current state to a file */
+    msr_save(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
 
     /* Overwrite the mock msr files with new data */
+    hval = 0x1EADBEEF;
+    for (i = 0; i < NUM_MSR; ++i) {
+        lval = NUM_MSR - i;
+        msr_val[i] = lval | (hval << 32);
+    }
+
+    msrsave_test_mock_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
 
     /* Restore to the original values */
+    msr_restore(test_save_path, test_whitelist_path, test_msr_path, num_cpu);
 
     /* Check that the values that are writable have been restored. */
-
     /* Check that the values that are not writable have been unaltered. */
+    hval = 0x9EADBEEF;
+    for (i = 0; i < NUM_MSR; ++i) {
+        lval = NUM_MSR - i;
+        msr_val[i] = lval | (hval << 32);
+    }
+    msrsave_test_check_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
 
+    char this_path[NAME_MAX] = {};
     for (i = 0; i < num_cpu; ++i) {
         snprintf(this_path, NAME_MAX, test_msr_path, i);
         unlink(this_path);
     }
     unlink(test_whitelist_path);
+    unlink(test_save_path);
     return err;
 }

@@ -35,7 +35,7 @@ clean:
 	rm -f msrsave.o msrsave test_msrsave
 
 check: msrsave_test.c msrsave.o msrsave.h
-	$(CC) -DTEST_MSRSAVE $(CFLAGS) $(LDFLAGS) msrsave_test.c -o test_msrsave
+	$(CC) $(CFLAGS) $(LDFLAGS) msrsave.o msrsave_test.c -o test_msrsave
 	./test_msrsave
 
 msrsave.o: msrsave.c msrsave.h

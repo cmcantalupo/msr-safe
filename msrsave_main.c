@@ -124,12 +124,12 @@ int main(int argc, char **argv)
         const char *file_name = argv[optind];
         const char *msr_path = "/dev/cpu/%d/msr";
         const char *msr_whitelist_path = "/dev/cpu/msr_whitelist";
-
+        int num_cpu = sysconf(_SC_NPROCESSORS_ONLN);
         if (do_restore) {
-            err = msr_restore(file_name, msr_whitelist_path, msr_path);
+            err = msr_restore(file_name, msr_whitelist_path, msr_path, num_cpu);
         }
         else {
-            err = msr_save(file_name, msr_whitelist_path, msr_path);
+            err = msr_save(file_name, msr_whitelist_path, msr_path, num_cpu);
         }
     }
 

@@ -32,12 +32,12 @@
 
 #include "msrsave.h"
 
-int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path)
+int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path, int num_cpu)
 {
     return 0;
 }
 
-int msr_restore(const char *file_name, const char *whitelist_path, const char *msr_path)
+int msr_restore(const char *file_name, const char *whitelist_path, const char *msr_path, int num_cpu)
 {
     return 0;
 }

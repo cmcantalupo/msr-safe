@@ -30,5 +30,5 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path);
-int msr_restore(const char *in_path, const char *whitelist_path, const char *msr_path);
+int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path, int num_cpu);
+int msr_restore(const char *in_path, const char *whitelist_path, const char *msr_path, int num_cpu);

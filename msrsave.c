@@ -51,6 +51,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     uint64_t *msr_offset = NULL;
     uint64_t *msr_mask = NULL;
     FILE *whitelist_fid = NULL;
+    FILE **msr_fids = NULL;
 
     /* Figure out how big the whitelist file is */
     err = stat(whitelist_path, &whitelist_stat);
@@ -132,7 +133,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
             goto exit;
         }
         whitelist_ptr = strchr(whitelist_ptr, '\n');
-        whitelist_ptr++; /* Move the pointer to the next line  */
+        whitelist_ptr++; /* Move the pointer to the next line */
         if (!whitelist_ptr) {
             err = -1;
             fprintf(stderr, "Error: Failed to parse whitelist file named \"%s\"\n", whitelist_path);
@@ -143,6 +144,21 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     /* Open all MSR files.
      * Read ALL existing data
      * Pass through the whitelist mask. */
+    msr_fids = (FILE**)malloc(sizeof(FILE*) * num_cpu);
+    for (i = 0; i < num_cpu; ++i) {
+        char msr_file_name[NAME_MAX];
+        snprintf(msr_file_name, NAME_MAX, msr_path, i);
+        msr_fids[i] = fopen(msr_file_name, "r");
+        if (!msr_fids[i]) {
+            snprintf(err_msg, NAME_MAX, "Could not open MSR file \"%s\"!", msr_file_name);
+            perror(err_msg);
+            err = errno;
+            goto exit;
+        }
+    }
+
+    /* File format:
+     * # MSR        Write Mask      # Comment
 
     /* Save to file.
      */
@@ -161,6 +177,14 @@ exit:
     }
     if (whitelist_fid) {
         fclose(whitelist_fid);
+    }
+    if (msr_fids){
+        for (i = 0; i < num_cpu; ++i) {
+            if (msr_fids[i]) {
+                fclose(msr_fids[i]);
+            }
+        }
+        free(msr_fids);
     }
     return err;
 }

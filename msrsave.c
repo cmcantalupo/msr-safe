@@ -41,25 +41,23 @@
 #include <string.h>
 #include "msrsave.h"
 
-int msr_save(const char *save_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
+static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, uint64_t **msr_offset_ptr, uint64_t **msr_mask_ptr)
 {
     int err = 0;
     int tmp_err = 0;
-    int i, j;
-    int msr_fd;
-    char err_msg[NAME_MAX];
-    size_t size = 0;
+    int i;
     size_t num_scan = 0;
     size_t num_msr = 0;
-    struct stat whitelist_stat;
-    struct stat save_stat;
     char *whitelist_buffer = NULL;
     char *whitelist_ptr = NULL;
     uint64_t *msr_offset = NULL;
     uint64_t *msr_mask = NULL;
-    uint64_t *save_buffer = NULL;
     FILE *whitelist_fid = NULL;
-    FILE *save_fid = NULL;
+    struct stat whitelist_stat;
+    char err_msg[NAME_MAX];
+
+    *msr_offset_ptr = NULL;
+    *msr_mask_ptr = NULL;
 
     /* Figure out how big the whitelist file is */
     tmp_err = stat(whitelist_path, &whitelist_stat);
@@ -108,12 +106,13 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
     whitelist_ptr = whitelist_buffer;
     for (num_msr = 0;
          whitelist_ptr = strchr(whitelist_ptr, '\n');
-         ++num_msr) {
+         ++(num_msr)) {
         ++whitelist_ptr;
     }
+    *num_msr_ptr = num_msr;
 
     /* Allocate buffers for parsed whitelist */
-    msr_offset = (uint64_t *)malloc(sizeof(uint64_t) * num_msr);
+    msr_offset = *msr_offset_ptr = (uint64_t *)malloc(sizeof(uint64_t) * num_msr);
     if (!msr_offset) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to allocate msr offset data of size: %zu!", sizeof(uint64_t) * num_msr);
@@ -121,7 +120,7 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
         goto exit;
     }
 
-    msr_mask = (uint64_t *)malloc(sizeof(uint64_t) * num_msr);
+    msr_mask = *msr_mask_ptr = (uint64_t *)malloc(sizeof(uint64_t) * num_msr);
     if (!msr_mask) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to allocate msr mask data of size: %zu!", sizeof(uint64_t) * num_msr);
@@ -150,12 +149,43 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
 
     tmp_err = fclose(whitelist_fid);
     if (tmp_err) {
+        whitelist_fid = NULL;
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to close whitelist file called \"%s\"", whitelist_path);
         perror(err_msg);
         goto exit;
     }
     whitelist_fid = NULL;
+
+exit:
+    if (whitelist_buffer) {
+        free(whitelist_buffer);
+    }
+    if (whitelist_fid) {
+        fclose(whitelist_fid);
+    }
+    return err;
+}
+
+int msr_save(const char *save_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
+{
+    int err = 0;
+    int tmp_err = 0;
+    int i, j;
+    int msr_fd;
+    char err_msg[NAME_MAX];
+    size_t size = 0;
+    size_t num_msr = 0;
+    uint64_t *msr_offset = NULL;
+    uint64_t *msr_mask = NULL;
+    uint64_t *save_buffer = NULL;
+    FILE *save_fid = NULL;
+
+    err = msr_parse_whitelist(whitelist_path, &num_msr, &msr_offset, &msr_mask);
+    if (err) {
+        goto exit;
+    }
+
 
     /* Allocate save buffer, a 2-D array over msr offset and then CPU
        (offset major ordering) */
@@ -227,6 +257,35 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
         goto exit;
     }
 
+
+    /* Clean up memory and files */
+exit:
+    if (save_buffer) {
+        free(save_buffer);
+    }
+    if (msr_offset) {
+        free(msr_offset);
+    }
+    if (msr_mask) {
+        free(msr_mask);
+    }
+    if (save_fid) {
+        fclose(save_fid);
+    }
+    if (msr_fd != -1) {
+        close(msr_fd);
+    }
+    return err;
+}
+
+int msr_restore(const char *save_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
+{
+    int err = 0;
+    int tmp_err = 0;
+    struct stat whitelist_stat;
+    struct stat save_stat;
+    char err_msg[NAME_MAX];
+
     /* Check that the timestamp of the save file is after the timetamp
        for the whitelist file*/
     tmp_err = stat(save_path, &save_stat);
@@ -245,40 +304,14 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
         goto exit;
     }
 
-    if (save_stat.st_mtime <= whitelist_stat.st_mtime) {
+    if (save_stat.st_mtime < whitelist_stat.st_mtime) {
         err = -1;
         unlink(save_path);
-        fprintf(stderr, "Error: whitelist was modified after save file was written (or within one second)!");
+        fprintf(stderr, "Error: whitelist was modified after save file was written!");
         goto exit;
     }
 
-    /* Clean up memory and files */
 exit:
-    if (save_buffer) {
-        free(save_buffer);
-    }
-    if (msr_offset) {
-        free(msr_offset);
-    }
-    if (msr_mask) {
-        free(msr_mask);
-    }
-    if (whitelist_buffer) {
-        free(whitelist_buffer);
-    }
-    if (whitelist_fid) {
-        fclose(whitelist_fid);
-    }
-    if (save_fid) {
-        fclose(save_fid);
-    }
-    if (msr_fd != -1) {
-        close(msr_fd);
-    }
-    return err;
-}
 
-int msr_restore(const char *file_name, const char *whitelist_path, const char *msr_path_format, int num_cpu)
-{
     return 0;
 }

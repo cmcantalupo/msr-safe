@@ -186,7 +186,6 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
         goto exit;
     }
 
-
     /* Allocate save buffer, a 2-D array over msr offset and then CPU
        (offset major ordering) */
     save_buffer = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
@@ -278,20 +277,34 @@ exit:
     return err;
 }
 
-int msr_restore(const char *save_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
+int msr_restore(const char *restore_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
 {
     int err = 0;
     int tmp_err = 0;
+    int i, j;
+    int msr_fd;
+    size_t size = 0;
+    size_t num_msr = 0;
+    uint64_t curr_val = 0;
+    uint64_t *msr_offset = NULL;
+    uint64_t *msr_mask = NULL;
+    uint64_t *restore_buffer = NULL;
+    FILE *restore_fid = NULL;
+    struct stat restore_stat;
     struct stat whitelist_stat;
-    struct stat save_stat;
     char err_msg[NAME_MAX];
 
-    /* Check that the timestamp of the save file is after the timetamp
+    err = msr_parse_whitelist(whitelist_path, &num_msr, &msr_offset, &msr_mask);
+    if (err) {
+        goto exit;
+    }
+
+    /* Check that the timestamp of the restore file is after the timetamp
        for the whitelist file*/
-    tmp_err = stat(save_path, &save_stat);
+    tmp_err = stat(restore_path, &restore_stat);
     if (tmp_err != 0) {
         err = errno ? errno : -1;
-        snprintf(err_msg, NAME_MAX, "stat() of %s failed! ", save_path);
+        snprintf(err_msg, NAME_MAX, "stat() of %s failed! ", restore_path);
         perror(err_msg);
         goto exit;
     }
@@ -304,14 +317,100 @@ int msr_restore(const char *save_path, const char *whitelist_path, const char *m
         goto exit;
     }
 
-    if (save_stat.st_mtime < whitelist_stat.st_mtime) {
+    if (restore_stat.st_mtime < whitelist_stat.st_mtime) {
         err = -1;
-        unlink(save_path);
-        fprintf(stderr, "Error: whitelist was modified after save file was written!");
+        fprintf(stderr, "Error: whitelist was modified after restore file was written!");
         goto exit;
     }
 
-exit:
+    /* Allocate restore buffer, a 2-D array over msr offset and then CPU
+       (offset major ordering) */
+    restore_buffer = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
+    if (!restore_buffer) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Unable to allocate msr restore state buffer of size: %zu!", num_msr * num_cpu * sizeof(uint64_t));
+        perror(err_msg);
+        goto exit;
+    }
 
-    return 0;
+    restore_fid = fopen(restore_path, "r");
+    if (!restore_fid) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not open restore file \"%s\"!", restore_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    size_t num_read = fread(restore_buffer, sizeof(uint64_t), num_msr * num_cpu, restore_fid);
+    if (num_read != num_msr * num_cpu || fgetc(restore_fid) != EOF) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not write all values to output file \"%s\"!", restore_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    tmp_err = fclose(restore_fid);
+    restore_fid = NULL;
+    if (tmp_err) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", restore_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    /* Open all MSR files.
+     * Read ALL existing data
+     * Pass through the whitelist mask
+     * Or in restore values
+     * Write back to MSR files. */
+    for (i = 0; i < num_cpu; ++i) {
+        char msr_file_name[NAME_MAX];
+        snprintf(msr_file_name, NAME_MAX, msr_path_format, i);
+        msr_fd = open(msr_file_name, O_RDWR);
+        if (msr_fd == -1) {
+            err = errno ? errno : -1;
+            snprintf(err_msg, NAME_MAX, "Could not open MSR file \"%s\"!", msr_file_name);
+            perror(err_msg);
+            goto exit;
+        }
+        for (j = 0; j < num_msr; ++j) {
+            ssize_t count = pread(msr_fd, &curr_val, sizeof(uint64_t), msr_offset[j]);
+            if (count != sizeof(uint64_t)) {
+                err = errno ? errno : -1;
+                snprintf(err_msg, NAME_MAX, "Failed to read msr value from MSR file \"%s\"!", msr_file_name);
+                perror(err_msg);
+                goto exit;
+            }
+            curr_val &= ~(msr_mask[j]);
+            curr_val |= restore_buffer[i * num_msr + j];
+            count = pwrite(msr_fd, &curr_val, sizeof(uint64_t), msr_offset[j]);
+        }
+        tmp_err = close(msr_fd);
+        msr_fd = -1;
+        if (tmp_err) {
+            err = errno ? errno : -1;
+            snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", msr_file_name);
+            perror(err_msg);
+            goto exit;
+        }
+    }
+
+    /* Clean up memory and files */
+exit:
+    if (restore_buffer) {
+        free(restore_buffer);
+    }
+    if (restore_fid) {
+        fclose(restore_fid);
+    }
+    if (msr_offset) {
+        free(msr_offset);
+    }
+    if (msr_mask) {
+        free(msr_mask);
+    }
+    if (msr_fd != -1) {
+        close(msr_fd);
+    }
+    return err;
 }

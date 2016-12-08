@@ -80,46 +80,46 @@ int main(int argc, char **argv)
 {
     int err = 0;
     const uint64_t whitelist_off[] = {0x0000000000000000ULL,
-                                      0x0000000000000001ULL,
-                                      0x0000000000000002ULL,
-                                      0x0000000000000003ULL,
-                                      0x0000000000000004ULL,
-                                      0x0000000000000005ULL,
-                                      0x0000000000000006ULL,
-                                      0x0000000000000007ULL,
                                       0x0000000000000008ULL,
-                                      0x0000000000000009ULL,
-                                      0x000000000000000aULL,
-                                      0x000000000000000bULL,
-                                      0x000000000000000cULL,
-                                      0x000000000000000dULL,
-                                      0x000000000000000eULL,
-                                      0x000000000000000fULL,
                                       0x0000000000000010ULL,
-                                      0x0000000000000011ULL,
-                                      0x0000000000000012ULL,
-                                      0x0000000000000013ULL};
+                                      0x0000000000000018ULL,
+                                      0x0000000000000020ULL,
+                                      0x0000000000000028ULL,
+                                      0x0000000000000030ULL,
+                                      0x0000000000000038ULL,
+                                      0x0000000000000040ULL,
+                                      0x0000000000000048ULL,
+                                      0x0000000000000050ULL,
+                                      0x0000000000000058ULL,
+                                      0x0000000000000060ULL,
+                                      0x0000000000000068ULL,
+                                      0x0000000000000070ULL,
+                                      0x0000000000000078ULL,
+                                      0x0000000000000080ULL,
+                                      0x0000000000000088ULL,
+                                      0x0000000000000090ULL,
+                                      0x0000000000000098ULL};
 
-    const uint64_t whitelist_mask[] = {0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL,
-                                       0x0fffffffffffffffULL};
+    const uint64_t whitelist_mask[] = {0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL,
+                                       0x8000000000000000ULL};
 
     enum {NUM_MSR = sizeof(whitelist_off) / sizeof(uint64_t)};
     assert(NUM_MSR == sizeof(whitelist_mask) / sizeof(uint64_t));
@@ -137,9 +137,6 @@ int main(int argc, char **argv)
         fprintf(fid, whitelist_format, whitelist_off[i], whitelist_mask[i]);
     }
     fclose(fid);
-
-    sleep(1); /* make sure the whitelist is older than the save file
-		 by one second.*/
 
     uint64_t lval = 0x0;
     uint64_t hval = 0xDEADBEEF;
@@ -177,7 +174,7 @@ int main(int argc, char **argv)
         lval = NUM_MSR - i;
         msr_val[i] = lval | (hval << 32);
     }
-    msrsave_test_check_msr(msr_val, sizeof(msr_val), test_msr_path, num_cpu);
+    msrsave_test_check_msr(msr_val, sizeof(msr_val) / sizeof(uint64_t), test_msr_path, num_cpu);
 
     char this_path[NAME_MAX] = {};
     for (i = 0; i < num_cpu; ++i) {

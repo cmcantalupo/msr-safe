@@ -138,6 +138,9 @@ int main(int argc, char **argv)
     }
     fclose(fid);
 
+    sleep(1); /* make sure the whitelist is older than the save file
+		 by one second.*/
+
     uint64_t lval = 0x0;
     uint64_t hval = 0xDEADBEEF;
     uint64_t msr_val[NUM_MSR];

@@ -41,7 +41,7 @@
 #include <string.h>
 #include "msrsave.h"
 
-int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
+int msr_save(const char *save_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
 {
     int err = 0;
     int tmp_err = 0;
@@ -52,17 +52,18 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     size_t num_scan = 0;
     size_t num_msr = 0;
     struct stat whitelist_stat;
+    struct stat save_stat;
     char *whitelist_buffer = NULL;
     char *whitelist_ptr = NULL;
     uint64_t *msr_offset = NULL;
     uint64_t *msr_mask = NULL;
-    uint64_t *result = NULL;
+    uint64_t *save_buffer = NULL;
     FILE *whitelist_fid = NULL;
     FILE *save_fid = NULL;
 
     /* Figure out how big the whitelist file is */
-    err = stat(whitelist_path, &whitelist_stat);
-    if (err != 0) {
+    tmp_err = stat(whitelist_path, &whitelist_stat);
+    if (tmp_err != 0) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "stat() of %s failed! ", whitelist_path);
         perror(err_msg);
@@ -88,9 +89,9 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     /* Open file */
     whitelist_fid = fopen(whitelist_path, "r");
     if (!whitelist_fid) {
+        err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Could not open whitelist file \"%s\"!", whitelist_path);
         perror(err_msg);
-        err = errno;
         goto exit;
     }
 
@@ -147,8 +148,8 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
         }
     }
 
-    int close_err = fclose(whitelist_fid);
-    if (close_err) {
+    tmp_err = fclose(whitelist_fid);
+    if (tmp_err) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to close whitelist file called \"%s\"", whitelist_path);
         perror(err_msg);
@@ -158,8 +159,8 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
 
     /* Allocate save buffer, a 2-D array over msr offset and then CPU
        (offset major ordering) */
-    result = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
-    if (!result) {
+    save_buffer = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
+    if (!save_buffer) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to allocate msr save state buffer of size: %zu!", num_msr * num_cpu * sizeof(uint64_t));
         perror(err_msg);
@@ -180,7 +181,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
             goto exit;
         }
         for (j = 0; j < num_msr; ++j) {
-            ssize_t read_count = pread(msr_fd, result + i * num_msr + j,
+            ssize_t read_count = pread(msr_fd, save_buffer + i * num_msr + j,
                                        sizeof(uint64_t), msr_offset[j]);
             if (read_count != sizeof(uint64_t)) {
                 err = errno ? errno : -1;
@@ -188,7 +189,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
                 perror(err_msg);
                 goto exit;
             }
-            result[i * num_msr + j] &= msr_mask[j];
+            save_buffer[i * num_msr + j] &= msr_mask[j];
         }
         tmp_err = close(msr_fd);
         msr_fd = -1;
@@ -201,18 +202,18 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     }
 
     /* Open output file. */
-    save_fid = fopen(out_path, "w");
+    save_fid = fopen(save_path, "w");
     if (!save_fid) {
         err = errno ? errno : -1;
-        snprintf(err_msg, NAME_MAX, "Could not open output file \"%s\"!", out_path);
+        snprintf(err_msg, NAME_MAX, "Could not open output file \"%s\"!", save_path);
         perror(err_msg);
         goto exit;
     }
 
-    size_t num_write = fwrite(result, sizeof(uint64_t), num_msr * num_cpu, save_fid);
+    size_t num_write = fwrite(save_buffer, sizeof(uint64_t), num_msr * num_cpu, save_fid);
     if (num_write != num_msr * num_cpu) {
         err = errno ? errno : -1;
-        snprintf(err_msg, NAME_MAX, "Could not write all values to output file \"%s\"!", out_path);
+        snprintf(err_msg, NAME_MAX, "Could not write all values to output file \"%s\"!", save_path);
         perror(err_msg);
         goto exit;
     }
@@ -221,15 +222,40 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     save_fid = NULL;
     if (tmp_err) {
         err = errno ? errno : -1;
-        snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", out_path);
+        snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", save_path);
         perror(err_msg);
+        goto exit;
+    }
+
+    /* Check that the timestamp of the save file is after the timetamp
+       for the whitelist file*/
+    tmp_err = stat(save_path, &save_stat);
+    if (tmp_err != 0) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "stat() of %s failed! ", save_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    tmp_err = stat(whitelist_path, &whitelist_stat);
+    if (tmp_err != 0) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "stat() of %s failed! ", whitelist_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    if (save_stat.st_mtime <= whitelist_stat.st_mtime) {
+        err = -1;
+        unlink(save_path);
+        fprintf(stderr, "Error: whitelist was modified after save file was written (or within one second)!");
         goto exit;
     }
 
     /* Clean up memory and files */
 exit:
-    if (result) {
-        free(result);
+    if (save_buffer) {
+        free(save_buffer);
     }
     if (msr_offset) {
         free(msr_offset);

@@ -44,6 +44,7 @@
 int msr_save(const char *out_path, const char *whitelist_path, const char *msr_path_format, int num_cpu)
 {
     int err = 0;
+    int tmp_err = 0;
     int i, j;
     int msr_fd;
     char err_msg[NAME_MAX];
@@ -55,7 +56,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
     char *whitelist_ptr = NULL;
     uint64_t *msr_offset = NULL;
     uint64_t *msr_mask = NULL;
-    uint64_t *msr_save = NULL;
+    uint64_t *result = NULL;
     FILE *whitelist_fid = NULL;
     FILE *save_fid = NULL;
 
@@ -146,10 +147,19 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
         }
     }
 
+    int close_err = fclose(whitelist_fid);
+    if (close_err) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Unable to close whitelist file called \"%s\"", whitelist_path);
+        perror(err_msg);
+        goto exit;
+    }
+    whitelist_fid = NULL;
+
     /* Allocate save buffer, a 2-D array over msr offset and then CPU
        (offset major ordering) */
-    msr_save = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
-    if (!msr_save) {
+    result = (uint64_t *)malloc(num_msr * num_cpu * sizeof(uint64_t));
+    if (!result) {
         err = errno ? errno : -1;
         snprintf(err_msg, NAME_MAX, "Unable to allocate msr save state buffer of size: %zu!", num_msr * num_cpu * sizeof(uint64_t));
         perror(err_msg);
@@ -170,7 +180,7 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
             goto exit;
         }
         for (j = 0; j < num_msr; ++j) {
-            ssize_t read_count = pread(msr_fd, msr_save + i * num_msr + j,
+            ssize_t read_count = pread(msr_fd, result + i * num_msr + j,
                                        sizeof(uint64_t), msr_offset[j]);
             if (read_count != sizeof(uint64_t)) {
                 err = errno ? errno : -1;
@@ -178,34 +188,48 @@ int msr_save(const char *out_path, const char *whitelist_path, const char *msr_p
                 perror(err_msg);
                 goto exit;
             }
-            msr_save[i * num_msr + j] &= msr_mask[j];
+            result[i * num_msr + j] &= msr_mask[j];
         }
-        int close_err = close(msr_fd);
+        tmp_err = close(msr_fd);
         msr_fd = -1;
-        if (close_err) {
+        if (tmp_err) {
             err = errno ? errno : -1;
             snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", msr_file_name);
             perror(err_msg);
             goto exit;
         }
-
-        save_fid = fopen(out_path, "w");
-        if (!save_fid) {
-            /* FIXME */
-        }
     }
 
-    /* File format:
-     * # MSR        Write Mask      # Comment
+    /* Open output file. */
+    save_fid = fopen(out_path, "w");
+    if (!save_fid) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not open output file \"%s\"!", out_path);
+        perror(err_msg);
+        goto exit;
+    }
 
-    /* Save to file.
-     */
-    /* Test out file.  If exists throw warning then overwrite. */
+    size_t num_write = fwrite(result, sizeof(uint64_t), num_msr * num_cpu, save_fid);
+    if (num_write != num_msr * num_cpu) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not write all values to output file \"%s\"!", out_path);
+        perror(err_msg);
+        goto exit;
+    }
+
+    tmp_err = fclose(save_fid);
+    save_fid = NULL;
+    if (tmp_err) {
+        err = errno ? errno : -1;
+        snprintf(err_msg, NAME_MAX, "Could not close MSR file \"%s\"!", out_path);
+        perror(err_msg);
+        goto exit;
+    }
 
     /* Clean up memory and files */
 exit:
-    if (msr_save) {
-        free(msr_save);
+    if (result) {
+        free(result);
     }
     if (msr_offset) {
         free(msr_offset);
@@ -218,6 +242,9 @@ exit:
     }
     if (whitelist_fid) {
         fclose(whitelist_fid);
+    }
+    if (save_fid) {
+        fclose(save_fid);
     }
     if (msr_fd != -1) {
         close(msr_fd);

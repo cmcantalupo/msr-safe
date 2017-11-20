@@ -83,7 +83,6 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
         goto exit;
     }
 
-    int whitelist_header = read(whitelist_fd, copy_buffer, sizeof(copy_buffer));
     while ((num_read = read(whitelist_fd, copy_buffer, sizeof(copy_buffer))))
     {
         if (num_read == -1)
@@ -188,9 +187,18 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
 
     /* Count the number of new lines in the file */
     whitelist_ptr = whitelist_buffer;
+    if (strchr(whitelist_ptr,'#') == whitelist_ptr){
+        //first line is a comment, skip.
+        whitelist_ptr = strchr(whitelist_ptr, '\n');
+        ++whitelist_ptr;
+    }
     for (num_msr = 0; (whitelist_ptr = strchr(whitelist_ptr, '\n')); ++num_msr)
     {
         ++whitelist_ptr;
+        if (strchr(whitelist_ptr, '#') == whitelist_ptr){
+            --num_msr; // Line starts with comment '#' and was counted eronously, remove.
+            // This should not happen
+        }
     }
     *num_msr_ptr = num_msr;
 
@@ -218,6 +226,11 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
     whitelist_ptr = whitelist_buffer;
     for (i = 0; i < num_msr; ++i)
     {
+        while (strchr(whitelist_ptr, '#') == whitelist_ptr){
+           // '#' is on first position means line is a comment, treat next line.
+            whitelist_ptr = strchr(whitelist_ptr, '\n');
+            whitelist_ptr++; /* Move the pointer to the next line */
+        }
         num_scan = sscanf(whitelist_ptr, whitelist_format, msr_offset + i, msr_mask + i);
         if (num_scan != 2)
         {

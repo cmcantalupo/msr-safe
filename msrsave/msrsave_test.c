@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     const char *test_save_path = "msrsave_test_store";
     const char *test_whitelist_path = "msrsave_test_whitelist";
     const char *test_msr_path = "msrsave_test_msr.%d";
-    const char *whitelist_format = "MSR: %.8llx Write Mask: %.16llx\n";
+    const char *whitelist_format = "%.8llx %.16llx\n";
     const int num_cpu = 10;
     int i;
 

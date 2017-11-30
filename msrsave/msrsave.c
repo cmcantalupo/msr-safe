@@ -144,8 +144,8 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
         goto exit;
     }
 
-    /* Allocate buffer for file contents */
-    whitelist_buffer = (char*)malloc(whitelist_stat.st_size);
+    /* Allocate buffer for file contents and null terminator */
+    whitelist_buffer = (char*)malloc(whitelist_stat.st_size + 1);
     if (!whitelist_buffer)
     {
         err = errno ? errno : -1;
@@ -153,6 +153,7 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
         perror(err_msg);
         goto exit;
     }
+    whitelist_buffer[whitelist_stat.st_size] = '\0';
 
     /* Open file */
     tmp_fd = open(tmp_path, O_RDONLY);
@@ -185,19 +186,15 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
         goto exit;
     }
 
-    /* Count the number of new lines in the file */
+    /* Count the number of new lines in the file that do not start with # */
     whitelist_ptr = whitelist_buffer;
-    if (strchr(whitelist_ptr,'#') == whitelist_ptr){
-        //first line is a comment, skip.
+    while (whitelist_ptr && *whitelist_ptr) {
+        if (*whitelist_ptr != '#') {
+            ++num_msr;
+        }
         whitelist_ptr = strchr(whitelist_ptr, '\n');
-        ++whitelist_ptr;
-    }
-    for (num_msr = 0; (whitelist_ptr = strchr(whitelist_ptr, '\n')); ++num_msr)
-    {
-        ++whitelist_ptr;
-        if (strchr(whitelist_ptr, '#') == whitelist_ptr){
-            --num_msr; // Line starts with comment '#' and was counted eronously, remove.
-            // This should not happen
+        if (whitelist_ptr) {
+            ++whitelist_ptr;
         }
     }
     *num_msr_ptr = num_msr;
@@ -226,10 +223,17 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
     whitelist_ptr = whitelist_buffer;
     for (i = 0; i < num_msr; ++i)
     {
-        while (strchr(whitelist_ptr, '#') == whitelist_ptr){
-           // '#' is on first position means line is a comment, treat next line.
+        while (*whitelist_ptr == '#') {
+            /* '#' is on first position means line is a comment, treat next line. */
             whitelist_ptr = strchr(whitelist_ptr, '\n');
-            whitelist_ptr++; /* Move the pointer to the next line */
+            if (whitelist_ptr) {
+                whitelist_ptr++; /* Move the pointer to the next line */
+            }
+            else {
+                err = -1;
+                fprintf(stderr, "Error: Failed to parse whitelist file named \"%s\"\n", whitelist_path);
+                goto exit;
+            }
         }
         num_scan = sscanf(whitelist_ptr, whitelist_format, msr_offset + i, msr_mask + i);
         if (num_scan != 2)
@@ -319,7 +323,7 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
                 err = errno ? errno : -1;
                 snprintf(err_msg, NAME_MAX, "Failed to read msr value 0x%llX from MSR file \"%s\"!", msr_offset[j], msr_file_name);
                 perror(err_msg);
-                //goto exit;
+                goto exit;
             }
             save_buffer[i * num_msr + j] &= msr_mask[j];
         }

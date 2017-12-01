@@ -30,16 +30,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <limits.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "msrsave.h"
 
@@ -219,7 +219,7 @@ static int msr_parse_whitelist(const char *whitelist_path, size_t *num_msr_ptr, 
     }
 
     /* Parse the whitelist */
-    const char *whitelist_format = "%llX %llX\n";
+    const char *whitelist_format = "%zX %zX\n";
     whitelist_ptr = whitelist_buffer;
     for (i = 0; i < num_msr; ++i)
     {
@@ -274,7 +274,7 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
     int err = 0;
     int tmp_err = 0;
     int i, j;
-    int msr_fd;
+    int msr_fd = -1;
     char err_msg[NAME_MAX];
     size_t num_msr = 0;
     uint64_t *msr_offset = NULL;
@@ -285,6 +285,10 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
     err = msr_parse_whitelist(whitelist_path, &num_msr, &msr_offset, &msr_mask);
     if (err)
     {
+        goto exit;
+    }
+    if (!msr_offset || !msr_mask) {
+        err = -1;
         goto exit;
     }
 
@@ -321,7 +325,7 @@ int msr_save(const char *save_path, const char *whitelist_path, const char *msr_
             if (read_count != sizeof(uint64_t))
             {
                 err = errno ? errno : -1;
-                snprintf(err_msg, NAME_MAX, "Failed to read msr value 0x%llX from MSR file \"%s\"!", msr_offset[j], msr_file_name);
+                snprintf(err_msg, NAME_MAX, "Failed to read msr value 0x%zX from MSR file \"%s\"!", msr_offset[j], msr_file_name);
                 perror(err_msg);
                 goto exit;
             }
@@ -398,7 +402,7 @@ int msr_restore(const char *restore_path, const char *whitelist_path, const char
     int err = 0;
     int tmp_err = 0;
     int i, j;
-    int msr_fd;
+    int msr_fd = -1;
     int do_print_header = 1;
     size_t num_msr = 0;
     uint64_t read_val = 0;
@@ -415,6 +419,10 @@ int msr_restore(const char *restore_path, const char *whitelist_path, const char
     err = msr_parse_whitelist(whitelist_path, &num_msr, &msr_offset, &msr_mask);
     if (err)
     {
+        goto exit;
+    }
+    if (!msr_offset || !msr_mask) {
+        err = -1;
         goto exit;
     }
 
@@ -517,7 +525,7 @@ int msr_restore(const char *restore_path, const char *whitelist_path, const char
                 count = pwrite(msr_fd, &write_val, sizeof(uint64_t), msr_offset[j]);
                 if (count != sizeof(uint64_t)) {
                     err = errno ? errno : -1;
-                    snprintf(err_msg, NAME_MAX, "Failed to write msr value at offset 0x%016xz to MSR file \"%s\"!", msr_offset[j], msr_file_name);
+                    snprintf(err_msg, NAME_MAX, "Failed to write msr value at offset 0x%016zX to MSR file \"%s\"!", msr_offset[j], msr_file_name);
                     perror(err_msg);
                     goto exit;
                 }
@@ -525,7 +533,7 @@ int msr_restore(const char *restore_path, const char *whitelist_path, const char
                     printf("offset, read, restored\n");
                     do_print_header = 0;
                 }
-                printf("0x%016zx, 0x%016zx, 0x%016zx\n", msr_offset[j], read_val, write_val);
+                printf("0x%016zX, 0x%016zX, 0x%016zX\n", msr_offset[j], read_val, write_val);
             }
         }
         tmp_err = close(msr_fd);
